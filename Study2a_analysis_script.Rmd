@@ -1,0 +1,435 @@
+---
+title: Stickers results for adults - Study 2a
+output:
+  html_notebook:
+    code_folding: hide
+    highlight: tango
+    theme: flatly
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  html_document:
+    toc: yes
+    toc_depth: '5'
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+---
+
+## Packages
+
+Installed the necessary packages
+
+```{r, warning=FALSE, results='hide'}
+packages <- c("tidyverse", "lme4", "psych", "Hmisc", "lsmeans", "Rmisc")
+packages_new <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(packages_new)) install.packages(packages_new)
+lapply(packages,library,character.only=T)
+
+```
+
+## Data import
+
+```{r}
+
+# find files in directory
+dir_files <- list.files(getwd())
+
+# import data
+file <- dir_files[grep("Study2a_data.csv$", dir_files)]
+dat_orig <- read.csv(file, na.strings = c("","-99"))
+
+```
+
+## Organize data
+
+```{r}
+# exclude participants who get the question on the instruction page wrong
+# comp: the other player
+# coop: neither of us gets to keep any stickers
+dat_orig$rule.correct <- numeric(dim(dat_orig)[1])
+dat_orig$rule.correct[which(dat_orig$condition == 'competition' & dat_orig$Rule == 'the other player')] <- 1
+dat_orig$rule.correct[which(dat_orig$condition == 'cooperation' & dat_orig$Rule == 'neither of us gets to keep any stickers')] <- 1
+
+# exclude participants for those who get comp questions wrong
+
+# if the other player guesses correctly and finds the stickers, who gets to keep them?
+# comp: the other player
+# coop: neither of us gets to keep any stickers
+dat_orig$comp1 <- numeric(dim(dat_orig)[1])
+dat_orig$comp1[which(dat_orig$condition == 'competition' &
+                       dat_orig$If.the.other.player.guesses.correctly.and.finds.the.stickers..who.gets.to.keep.them. == 'the other player')] <- 1
+dat_orig$comp1[which(dat_orig$condition == 'cooperation' &
+                       dat_orig$If.the.other.player.guesses.correctly.and.finds.the.stickers..who.gets.to.keep.them. == 'neither of us gets to keep any stickers')] <- 1
+
+# if the other player guesses incorrectly and doesn't find the stickers, who gets to keep them?
+# comp: me
+# coop-4: we each get to keep a sticker
+# coop-8: we each get to keep a sheet of stickers
+dat_orig$comp2 <- numeric(dim(dat_orig)[1])
+dat_orig$comp2[which(dat_orig$condition == 'competition' & dat_orig$If.the.other.player.guesses.incorrectly.and.doesn.t.find.the.stickers..who.gets.to.keep.them. == 'me')] <- 1
+dat_orig$comp2[which(dat_orig$condition == 'cooperation' & dat_orig$stickers_num == 4 &
+                       dat_orig$If.the.other.player.guesses.incorrectly.and.doesn.t.find.the.stickers..who.gets.to.keep.them. == 'we each get to keep a sticker')] <- 1
+dat_orig$comp2[which(dat_orig$condition == 'cooperation' & dat_orig$stickers_num == 8 &
+                       dat_orig$If.the.other.player.guesses.incorrectly.and.doesn.t.find.the.stickers..who.gets.to.keep.them. == 'we each get to keep a sheet of stickers')] <- 1
+
+# exclude participants who only partially filled out survey
+dat_completed <- subset(dat_orig, !is.na(Trial.1_Hide) & !is.na(Trial.1_Response) & !is.na(Trial.2_Hide) & !is.na(Trial.2_Response) & !is.na(Trial.3_Hide) & !is.na(Trial.3_Response) & !is.na(Trial.4_Hide) & !is.na(Trial.4_Response))
+
+dat_removed <- subset(dat_completed, comp1 == 1 & comp2 == 1 & rule.correct == 1)
+
+# turn to long format
+col_hide <- which(grepl("Trial.*", colnames(dat_removed)))
+dat_rem_long <- dat_removed %>% 
+  gather(key = 'question.hide', value = 'response', col_hide) %>% 
+  separate(question.hide, c("trial", "question"), sep = "_") %>%
+  spread(question, response)
+
+# create a new column: success
+# 1 = successful; 0 = not successful
+# successful if Response.to.question !=  Where.would.you.like.to.hide.the.sticker.
+dat_rem_long$correct <- numeric(dim(dat_rem_long)[1])
+dat_rem_long$correct[which(dat_rem_long$Response != dat_rem_long$Hide)] <- 1
+
+# convert to proper class
+dat_rem_long$SubjID <- as.factor(dat_rem_long$SubjID)
+dat_rem_long$trial <- ordered(as.factor(dat_rem_long$trial))
+
+# turn to wide format
+
+# create a column with just the proportion
+dat_rem_prop <- dat_rem_long %>% 
+  group_by(SubjID, condition, stickers_num, stickers_you_total, Age, Gender) %>%
+  dplyr::summarise(mean = mean(correct))
+
+dat_all <- dat_orig
+
+# turn to long format
+columns <- which(grepl("Trial.*", colnames(dat_all)))
+dat_all_long <- dat_all %>% 
+  gather(key = 'trial', value = 'response', columns) %>%
+  separate(trial, c("trial", "question"), sep = "_") %>%
+  spread(question, response)
+
+# create a new column: success
+# 1 = successful; 0 = not successful
+# successful if Response.to.question !=  Where.would.you.like.to.hide.the.sticker.
+dat_all_long$correct <- numeric(dim(dat_all_long)[1])
+dat_all_long$correct[which(dat_all_long$Response != dat_all_long$Hide)] <- 1
+
+# convert to proper class
+dat_all_long$SubjID <- as.factor(dat_all_long$SubjID)
+dat_all_long$trial <- ordered(as.factor(dat_all_long$trial))
+
+# turn to wide format
+
+# create a column with just the proportion
+dat_all_prop <- dat_all_long %>% 
+  group_by(SubjID, condition, stickers_num) %>%
+  dplyr::summarise(mean = mean(correct))
+
+```
+
+## Tables: counts
+
+### Number of people who completed the task
+```{r}
+
+with(dat_completed, table(condition, stickers_num))
+```
+
+### Number of people who passed question on instruction page and comp checks afterward
+
+```{r}
+
+with(subset(dat_rem_long, trial=="Trial.1"), table(condition, stickers_num))
+
+```
+
+### Number of people who mentioned deception
+
+```{r}
+
+tb_decep <- with(subset(dat_rem_long, trial=="Trial.1"), table(coded_response))
+
+tb_decep
+
+chisq.test(tb_decep)
+
+```
+
+
+## Excluded people who failed comp checks
+
+### Descriptive stats
+
+Demographics
+
+```{r}
+
+print("Demographics for people who completed the survey")
+summary(dat_completed[,c("Age", "Gender")])
+print("Demographics for people who passed comp checks")
+summary(dat_rem_prop)
+
+```
+
+### Effect size calculation
+
+Proportion of stickers won for cooperation vs. competition
+
+```{r}
+
+cohen.d(dat_rem_prop$mean, relevel(dat_rem_prop$condition, ref="cooperation"))
+
+```
+
+
+Grouped by trial #
+
+```{r, fig.height=2, fig.width=5}
+
+dat_rem_trial <- summarySE(dat_rem_long, measurevar="correct", groupvars = c("trial", "condition"))
+
+ggplot(dat_rem_trial, aes(x=condition, y=correct, fill=condition)) +
+  geom_bar(stat="identity", position = position_dodge()) +
+  geom_errorbar(aes(ymin=correct-ci, ymax=correct+ci), width=0.2) +
+  facet_wrap(~trial, ncol=4) +
+  coord_cartesian(y=c(0,1)) +
+  xlab("Condition") +
+  ylab("Proportion of people winning the sticker") +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  theme_bw()
+
+```
+
+
+### Figures
+
+#### By condition
+
+```{r, fig.height = 1, fig.width = 2}
+ggplot(dat_rem_prop, aes(y = mean, x = condition)) +
+  stat_summary(fun.data = "mean_cl_boot") +
+  coord_cartesian(y=c(0,1)) +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  theme_classic()
+
+ggplot(dat_rem_prop, aes(y = mean, x = condition)) +
+  stat_summary(fun.data = "mean_cl_boot") +
+  facet_wrap(~stickers_num, ncol=2) +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) + 
+  coord_cartesian(y=c(0,1)) +
+  theme_classic()
+
+dat_summ <- summarySE(dat_rem_long, measurevar="correct", groupvars = c("condition"))
+ggplot(dat_summ, aes(y=correct, x=condition, fill=condition)) +
+  geom_bar(stat="identity", position=position_dodge(), width = 0.5) +
+  geom_errorbar(aes(ymin=correct-ci, ymax=correct+ci, width=.2)) +
+  coord_cartesian(y=c(0,1)) +
+  ylab("Proportion of trials won") +
+  xlab("Condition") +
+  ggtitle("Study 2a") +
+  scale_x_discrete(labels=c("Coop" = "Cooperation", "Comp" = "Competition")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  theme_bw()
+```
+
+
+### Analyses
+
+Analysis with proportion data
+
+```{r}
+
+model.p.1 = glm(cbind(stickers_you_total, stickers_num - stickers_you_total) ~ condition*Age + as.factor(stickers_num) + Gender,
+              data = dat_rem_prop,
+              family = binomial)
+
+drop1(model.p.1, test="Chisq")
+
+model.p.2 <- update(model.p.1, . ~ . -condition:Age)
+drop1(model.p.2, test="Chisq")
+
+```
+
+#### Comparison with null model
+
+```{r}
+
+model.p.1.null = glm(cbind(stickers_you_total, stickers_num - stickers_you_total) ~ as.factor(stickers_num) + Age + Gender,
+              data = dat_rem_prop,
+              family = binomial)
+
+anova(model.p.1.null, model.p.1, test="Chisq")
+
+```
+
+##### Analysis with binary response term
+
+```{r}
+
+model.b.1 = glmer(as.factor(correct) ~ condition*Age + Gender + as.factor(stickers_num) +
+                (1 | SubjID) + (1|trial),
+              data = dat_rem_long,
+              family = binomial,
+              control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+drop1(model.b.1, test="Chisq")
+
+model.b.2 = update(model.b.1, . ~ . -condition:Age)
+drop1(model.b.2, test="Chisq")
+
+```
+
+##### With trial as a predictor
+
+```{r}
+
+model.b.t.1 <- glmer(as.factor(correct) ~ condition*trial +
+                (1 | SubjID),
+              data = dat_rem_long,
+              family = binomial,
+              control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+drop1(model.b.t.1, test="Chisq")
+
+drop1(update(model.b.t.1, . ~ . -condition:trial), test="Chisq")
+
+```
+
+##### Analysis for each trial
+
+Trial 1
+
+```{r}
+
+dat_t1 <- subset(dat_rem_long, trial == "Trial.1")
+m.stick.t.1 <- glm(as.factor(correct) ~ + condition*Age + Gender + as.factor(stickers_num),
+                     data = dat_t1,
+                     family = binomial)
+
+drop1(m.stick.t.1, test="Chisq")
+
+m.stick.t.1.1 <- update(m.stick.t.1, . ~ . -condition:Age)
+drop1(m.stick.t.1.1, test="Chisq")
+
+```
+
+Trial 2
+
+```{r}
+
+dat_t2 <- subset(dat_rem_long, trial == "Trial.2")
+m.stick.t.2 <- glm(as.factor(correct) ~ + condition*Age + Gender + as.factor(stickers_num),
+                     data = dat_t2,
+                     family = binomial)
+
+drop1(m.stick.t.2, test="Chisq")
+
+m.stick.t.2.1 <- update(m.stick.t.2, . ~ . -condition:Age)
+drop1(m.stick.t.2.1, test="Chisq")
+
+```
+
+Trial 3
+
+```{r}
+
+dat_t3 <- subset(dat_rem_long, trial == "Trial.3")
+m.stick.t.3 <- glm(as.factor(correct) ~ + condition*Age + Gender + as.factor(stickers_num),
+                     data = dat_t3,
+                     family = binomial)
+
+drop1(m.stick.t.3, test="Chisq")
+
+m.stick.t.3.1 <- update(m.stick.t.3, . ~ . -condition:Age)
+drop1(m.stick.t.3.1, test="Chisq")
+
+```
+
+Trial 4
+
+```{r}
+
+dat_t4 <- subset(dat_rem_long, trial == "Trial.4")
+m.stick.t.4 <- glm(as.factor(correct) ~ + condition*Age + Gender + as.factor(stickers_num),
+                     data = dat_t4,
+                     family = binomial)
+
+drop1(m.stick.t.4, test="Chisq")
+
+m.stick.t.4.1 <- update(m.stick.t.4, . ~ . -condition:Age)
+drop1(m.stick.t.4.1, test="Chisq")
+
+```
+
+#### Number of switches per person
+
+```{r, fig.width =2}
+
+df_switch <- dat_removed %>% unite("Responses", "Trial.1_Response", "Trial.2_Response", "Trial.3_Response", "Trial.4_Response", sep=",") %>% dplyr::select("SubjID", "Responses", "condition", contains("Responses"))
+
+# find number of switches
+
+list_switches <- lapply(df_switch$Responses, function(x) unlist(strsplit(x, split=","))) 
+
+switches <- lapply(list_switches, function(x) rle(x))
+
+df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
+
+t.test(df_switch$num_switches[which(df_switch$condition == "competition")], df_switch$num_switches[which(df_switch$condition == "cooperation")])
+
+```
+
+## Including all people
+
+
+### Figures
+
+```{r}
+ggplot(dat_all_prop, aes(y = mean, x = condition)) +
+  stat_summary(fun.data = "mean_cl_boot") +
+  coord_cartesian(y=c(0,1)) +
+  theme_classic()
+
+ggplot(dat_all_prop, aes(y = mean, x = condition)) +
+  stat_summary(fun.data = "mean_cl_boot") +
+  facet_wrap(~stickers_num, ncol=2) +
+  coord_cartesian(y=c(0,1)) +
+  theme_classic()
+
+```
+
+
+### Analyses
+
+```{r}
+
+model2 = glmer(correct ~ condition +
+                (1 | SubjID) + (1|trial),
+              data = dat_all_long,
+              family = binomial)
+
+drop1(model2, test="Chisq")
+
+```
+
+With trial as a predictor
+
+```{r}
+
+model2 = glmer(correct ~ condition*trial +
+                (1 | SubjID),
+              data = dat_all_long,
+              family = binomial)
+
+drop1(model2, test="Chisq")
+
+model3 = update(model2, . ~ . -condition:trial)
+drop1(model3, test="Chisq")
+
+```
+
+

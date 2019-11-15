@@ -1,0 +1,41 @@
+﻿Variables,Values
+Participant,Participant ID
+Success,S = Successful; NS = Not Successful
+Date,Date tested
+Location,Location tested: Boston Common or Boston Public Garden
+Condition,Competition or Cooperation
+Age_year,Age in years on day of testing
+Age_month,Age in months after 4 years on day of testing
+Age_day,Age in days after 4 years and pre-specified month (above) on day of testing
+Age_in_days,Age in days on day of testing
+Gender,F=female; M=male
+Likes_sticker,Y=Yes; N=No
+Assent,Y=Yes; N=No
+Task_order,Which came first? S=Stickers; DN=Day-Night
+Stickers_rule_guess_right_correct,"Whether response to ""If partner guesses right, what happens?"" is correct: Y=Yes; N=No"
+Stickers_rule_guess_wrong_correct,"Whether response to ""If partner guesses wrong, what happens?"" is correct: Y=Yes; N=No"
+Stickers_T1_location,Where the sticker(s) was/were hidden: L=left; R=right (from the child's POV)
+Stickers_T2_location,Where the sticker(s) was/were hidden: L=left; R=right (from the child's POV)
+Stickers_T3_location,Where the sticker(s) was/were hidden: L=left; R=right (from the child's POV)
+Stickers_T4_location,Where the sticker(s) was/were hidden: L=left; R=right (from the child's POV)
+Stickers_T1_win,Whether the child won: Y=Yes; N=No
+Stickers_T2_win,Whether the child won: Y=Yes; N=No
+Stickers_T3_win,Whether the child won: Y=Yes; N=No
+Stickers_T4_win,Whether the child won: Y=Yes; N=No
+Stickers_memory_location,Child's response to memory question: L=left; R=right (from child's POV)
+S_memory_correct,Whether the child got it correct: Y=Yes; N=No
+DN_more_correct,"Whether response to ""If partner gets more trials correct, what happens?"" is correct: Y=Yes, N=No"
+DN_less_correct,"Whether response to ""If partner gets less trials correct, what happens?"" is correct: Y=Yes, N=No"
+DN_P1_card,Practice Card Presented: Night or Day
+DN_P2_card,Practice Card Presented: Night or Day
+DN_P3_card,Practice Card Presented: Night or Day
+DN_P4_card,Practice Card Presented: Night or Day
+DN_P5_card,Practice Card Presented: Night or Day
+DN_P6_card,Practice Card Presented: Night or Day
+DN_P1_correct,Response to practice card correct: Y=Yes; N=No
+DN_P2_correct,Response to practice card correct: Y=Yes; N=No
+DN_P3_correct,Response to practice card correct: Y=Yes; N=No
+DN_P4_correct,Response to practice card correct: Y=Yes; N=No
+DN_P5_correct,Response to practice card correct: Y=Yes; N=No
+DN_P6_correct,Response to practice card correct: Y=Yes; N=No
+Stickers_Repeat_instructions,

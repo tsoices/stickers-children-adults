@@ -1,0 +1,424 @@
+---
+title: "Stickers_EF"
+output:
+html_notebook:
+code_folding: hide
+highlight: tango
+theme: default
+toc: yes
+toc_depth: 5
+toc_float: yes
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+---
+
+## Install packages
+
+```{r, echo=FALSE}
+packages <- c("tidyverse", "lme4", "multcomp", "effects", "optimx", "Rmisc", "lsmeans", "stringi", "car", "knitr", "sjPlot")
+packages_new <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(packages_new)) install.packages(packages_new)
+lapply(packages,library,character.only=T)
+
+# set palette color for figures
+palette(c("#84a59d", "#f6bd60"))
+
+```
+
+
+## Import data
+
+```{r}
+
+# read paper data
+paper_data_path <- getwd()
+df <- read.csv(paste0(paper_data_path, "/Study1_paper.csv"), header = TRUE, na.strings = c("."), quote='"', strip.white = TRUE)
+
+df.csv_update <- read.csv(paste0(paper_data_path, "/Study1_DayNight.csv"), header = TRUE, na.strings = c(".", "NA"), quote='"', strip.white = TRUE)
+
+```
+
+## Reshape and recode
+
+```{r message=FALSE, warning=FALSE}
+
+## DAY-NIGHT TASK
+
+# make sure variables are of the proper class
+df.csv.new <- df.csv_update %>% group_by(participant) %>%
+  dplyr::summarise(DN_total = sum(resp_key_image.corr)) %>%
+  ungroup() %>%
+  dplyr::rename(Participant = participant)
+
+df.csv.new$Participant <- as.factor(sprintf("%03d", as.numeric(df.csv.new$Participant)))
+
+## DATA SHEETS
+
+# make sure variables are of the proper class
+df$Participant <- as.factor(sprintf("%03d", as.numeric(df$Participant)))
+
+# create new column for total stickers won
+a <- dplyr::select(df, matches("win")) == 'Y'
+df$Stickers_total <- sapply(df[,1], function(x) sum(as.integer(a[x,1:4]), na.rm=TRUE))
+df$Stickers_prop <- df$Stickers_total / 4
+
+df$Stickers_total_1sthalf <- sapply(df[,1], function(x) sum(as.integer(a[x,1:2]), na.rm=TRUE))
+df$Stickers_total_2ndhalf <- sapply(df[,1], function(x) sum(as.integer(a[x,3:4]), na.rm=TRUE))
+
+# change age to years
+df$Age_in_years <- df$Age_in_days / 365
+df$Age_cat <- NA
+df$Age_cat[which(df$Age_in_years < 4.5)] <- "younger"
+df$Age_cat[which(df$Age_in_years > 4.5)] <- "older"
+df$Age_cat <- as.factor(df$Age_cat)
+
+# only keep successes and add Day-Night computer task results to the dataframe
+df_S <- subset(df, Success == 'S') %>%
+  left_join(df.csv.new, by="Participant") 
+
+df_S$Participant <- as.factor(df_S$Participant)
+df_S$DN_prop <- df_S$DN_total / 16
+
+# turn to long format
+df.long <- df_S %>% gather("Time", "Sticker_win", Stickers_T1_win:Stickers_T4_win)
+df.long$Time <- as.factor(sapply(df.long$Time, function(x) stri_replace_all_regex(x, '.(?<letters>[a-z|A-Z]+).', '')))
+df.long$Time <- ordered(df.long$Time, levels = c("T1", "T2", "T3", "T4"))
+
+df.long.pos <- df_S %>% gather("Time", "Sticker_location", Stickers_T1_location:Stickers_T4_location) %>%
+  dplyr::select("Sticker_location")
+
+df.long <- df.long %>% bind_cols(df.long.pos) %>%
+  dplyr::select(-c(Stickers_T1_location:Stickers_T4_location))
+
+df.long$Sticker_win <- as.factor(df.long$Sticker_win)
+
+```
+
+## Age demographics
+
+```{r}
+
+t.test(Age_in_years ~ Condition, data=df_S)
+
+```
+
+## Analyses
+
+### DV: Stickers
+
+#### Stickers by Condition, Age, and Gender
+
+##### Using proportion of stickers won
+
+```{r}
+
+options(contrasts = c("contr.sum","contr.poly"))
+
+m.stick.1 <- glm(cbind(Stickers_total, 4 - Stickers_total) ~ Condition*Age_in_years + Gender,
+                 data = df_S,
+                 family = binomial)
+
+tab_model(m.stick.1, use.viewer = TRUE)
+
+drop1(m.stick.1, test="Chisq")
+drop1(update(m.stick.1, . ~ . -Condition:Age_in_years), test="Chisq")
+
+```
+
+##### Full model vs. Null model
+
+```{r}
+
+m.stick.null <- glm(cbind(Stickers_total, 4 - Stickers_total) ~ Age_in_years + Gender,
+                 data = df_S,
+                 family = binomial)
+
+# test full vs. null
+anova(m.stick.null, m.stick.1, test="Chisq")
+
+```
+
+
+##### Taking into account trial # in the model
+
+###### In main text
+
+```{r}
+
+m.stick.t.1 <- glmer(Sticker_win ~ Condition*Age_in_years + Condition*Time +
+                       (1|Participant),
+                     data = df.long,
+                     family = binomial,
+                     control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+tab_model(m.stick.t.1, use.viewer = TRUE)
+
+drop1(m.stick.t.1, test="Chisq")
+
+m.stick.t.2 <- update(m.stick.t.1, . ~ . -Condition:Age_in_years -Condition:Time)
+drop1(m.stick.t.2, test="Chisq")
+
+```
+
+###### In Supp Mat
+```{r}
+
+m.stick.t.1 <- glmer(Sticker_win ~ Condition*Age_in_years*Time +
+                       (1|Participant),
+                     data = df.long,
+                     family = binomial,
+                     control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+m.stick.t.2 <- update(m.stick.t.1, . ~ . -Condition:Age_in_years:Time)
+drop1(m.stick.t.2, test="Chisq")
+
+```
+
+##### For each individual trial
+
+```{r}
+
+print("++++++++++ T1 ++++++++++")
+
+m.stick.t1.1 <- glm(Stickers_T1_win ~ Condition*Age_in_years*Gender,
+                    data = df_S,
+                    family = binomial)
+
+print("3-way interaction")
+drop1(m.stick.t1.1, test="Chisq")
+print("2-way interactions")
+m.stick.t1.2 <- update(m.stick.t1.1, . ~ . -Condition:Age_in_years:Gender)
+drop1(m.stick.t1.2, test="Chisq")
+
+lsmeans(m.stick.t1.1, list(pairwise ~ Condition), adjust = "mvt")
+
+print("++++++++++ T2 ++++++++++")
+
+m.stick.t2.1 <- glm(Stickers_T2_win ~ Condition*Age_in_years*Gender,
+                    data = df_S,
+                    family = binomial)
+
+print("3-way interaction")
+drop1(m.stick.t2.1, test="Chisq")
+print("2-way interactions")
+m.stick.t2.2 <- update(m.stick.t2.1, . ~ . -Condition:Age_in_years:Gender)
+drop1(m.stick.t2.2, test="Chisq")
+
+lsmeans(m.stick.t2.1, list(pairwise ~ Condition), adjust = "mvt")
+
+print("++++++++++ T3 ++++++++++")
+
+m.stick.t3.1 <- glm(Stickers_T3_win ~ Condition*Age_in_years*Gender,
+                    data = df_S,
+                    family = binomial)
+
+print("3-way interaction")
+drop1(m.stick.t3.1, test="Chisq")
+print("2-way interactions")
+m.stick.t3.2 <- update(m.stick.t3.1, . ~ . -Condition:Age_in_years:Gender)
+drop1(m.stick.t3.2, test="Chisq")
+
+lsmeans(m.stick.t3.1, list(pairwise ~ Condition), adjust = "mvt")
+
+print("++++++++++ T4 ++++++++++")
+
+m.stick.t4.1 <- glm(Stickers_T4_win ~ Condition*Age_in_years*Gender,
+                    data = df_S,
+                    family = binomial)
+
+print("3-way interaction")
+drop1(m.stick.t4.1, test="Chisq")
+print("2-way interactions")
+m.stick.t4.2 <- update(m.stick.t4.1, . ~ . -Condition:Age_in_years:Gender)
+drop1(m.stick.t4.2, test="Chisq")
+
+lsmeans(m.stick.t4.1, list(pairwise ~ Condition), adjust = "mvt")
+
+```
+
+#### Number of switches
+
+```{r}
+df_switch <- df_S %>% unite("Locations", "Stickers_T1_location", "Stickers_T2_location", "Stickers_T3_location", "Stickers_T4_location", sep=",") 
+df_switch <- df_switch %>% unite("Wins", "Stickers_T1_win", "Stickers_T2_win", "Stickers_T3_win", "Stickers_T4_win", sep=",")
+
+df_switch <- df_switch %>% dplyr::select("Participant", "Condition", contains("Locations"), contains("Wins"))
+
+# find number of switches
+
+list_locations <- lapply(df_switch$Locations, function(x) unlist(strsplit(x, split=","))) 
+list_wins <- lapply(df_switch$Wins, function(x) unlist(strsplit(x, split=","))) 
+
+list_responses = list_locations
+for (i in 1:length(list_responses)) {
+  for (j in 1:length(list_responses[[i]])) {
+    if (list_wins[[i]][j] == "Y" & list_locations[[i]][j] == "L") {
+      list_responses[[i]][j] <- "R"
+    } else if (list_wins[[i]][j] == "Y" & list_locations[[i]][j] == "R") {
+      list_responses[[i]][j] <- "L"
+    } else if (list_wins[[i]][j] == "NA") {
+      list_responses[[i]][j] <- "NA"
+    }
+  }
+}
+
+switches <- lapply(list_responses, function(x) rle(x))
+
+df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
+
+t.test(df_switch$num_switches[which(df_switch$Condition == "Competition")], df_switch$num_switches[which(df_switch$Condition == "Cooperation")])
+```
+
+
+#### Stickers by performance on other tasks (EF, memory)
+
+```{r}
+
+m.stick.3 <- glm(cbind(Stickers_total, 4 - Stickers_total) ~ DN_prop + S_memory_correct + Condition*Age_in_years + Gender,
+                 data = df_S,
+                 family = binomial)
+
+print("main effects")
+drop1(m.stick.3, test="Chisq")
+
+tab_model(m.stick.3, use.viewer = TRUE)
+
+```
+
+
+### DV: Day-Night
+
+```{r}
+df_dn <- subset(df_S, !is.na(DN_total))
+
+m.dn.1 <- glm(cbind(DN_total, 16 - DN_total) ~ Condition*Age_in_years + Gender,
+              data = df_dn,
+              family = binomial)
+
+print("2-way interaction")
+drop1(m.dn.1, test="Chisq")
+print("main effects")
+m.dn.2 <- update(m.dn.1, . ~ . -Condition:Age_in_years)
+drop1(m.dn.2, test="Chisq")
+
+lsmeans(m.dn.1, list(pairwise ~ Condition), adjust = "mvt")
+
+tab_model(m.dn.1, use.viewer = TRUE)
+
+```
+
+### DV: Memory
+
+```{r}
+
+m.mem.1 <- glm(S_memory_correct ~ Condition*Age_in_years + Gender,
+               data = df_S,
+               family = binomial)
+
+drop1(m.mem.1, test="Chisq")
+drop1(update(m.mem.1, . ~ . -Condition:Age_in_years), test="Chisq")
+
+lsmeans(m.mem.1, list(pairwise ~ Condition), adjust = "mvt")
+
+tab_model(m.mem.1, use.viewer = TRUE)
+
+```
+
+
+## Figures 
+
+### Sticker by Condition and Age
+
+```{r, fig.width = 2}
+
+ggplot(df_S, aes(x=Age_in_years, y = Stickers_prop, fill=Condition, color=Condition)) +
+  geom_smooth(method="glm") +
+  xlab('Age') +
+  coord_cartesian(xlim=c(4,5), ylim=c(0,1)) +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  ylab('Proportion of stickers won') +
+  ggtitle('Stickers task') +
+  theme_bw()
+
+```
+
+### Sticker over trial #
+
+```{r, fig.width = 5, fig.height = 2}
+
+df.long.rm <- df.long[!is.na(df.long$Sticker_win),]
+
+df.summ.time <- with(df.long.rm, table(Sticker_win, Condition, Time))
+df.summ.time.prop <- as.data.frame(prop.table(df.summ.time, c(2,3)))
+
+ggplot(df.summ.time.prop, aes(y=Freq, x=Condition, fill=Sticker_win)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~Time, ncol=4) +
+  scale_fill_brewer(palette="Greys", name="Sticker won\n", labels=c("No", "Yes")) +
+  xlab('Proportion') + 
+  theme_bw()
+
+```
+
+
+#### Continuous age
+
+```{r, fig.width =5, fig.height = 2}
+ggplot(df.long, aes(x=Age_in_years, y = as.integer(Sticker_win) - 1, fill=Condition, color=Condition)) +
+  geom_smooth(method="lm") +
+  facet_wrap(~Time, ncol=4) +
+  xlab('Age') +
+  ylab('Proportion of people') +
+  coord_cartesian(xlim=c(4,5), ylim=c(0,1)) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  theme_bw() +
+  theme(panel.spacing = unit(1, "lines"))
+```
+
+
+### Day-Night by Condition and Age
+
+```{r, fig.width=2}
+
+ggplot(df_S, aes(y=DN_total / 16, x = Age_in_years, fill=Condition, color=Condition)) +
+  geom_smooth(method="glm") +
+  coord_cartesian(xlim=c(4,5), ylim=c(0,1)) +
+  xlab('Age') +
+  ylab('Proportion Correct on Day-Night') +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  ylab('Proportion of trials correct') +
+  ggtitle('Day-Night task') +
+  coord_cartesian(xlim=c(4,5), ylim=c(0,1)) +
+  theme_bw()
+
+```
+
+### Memory by Condition and Age
+
+```{r}
+
+df.mem.sub <- subset(df_S, !is.na(S_memory_correct))
+df.summ.mem <- with(df.mem.sub, table(S_memory_correct, Condition, Age_cat))
+df.summ.mem.prop <- as.data.frame(prop.table(df.summ.mem, c(2,3)))
+
+ggplot(df.summ.mem.prop, aes(y=Freq, x = Condition, fill=S_memory_correct)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~Age_cat, ncol=2) +
+  scale_color_brewer(palette="Greys", name="Memory question correct\n", labels=c("No", "Yes")) +
+  scale_fill_brewer(palette="Greys", name="Memory question correct\n", labels=c("No", "Yes")) +
+  ylab("Proportion of participants") +
+  theme_bw()
+
+df.summ.mem <- with(df.mem.sub, table(S_memory_correct, Condition))
+df.summ.mem.prop <- as.data.frame(prop.table(df.summ.mem, 2))
+
+ggplot(df.summ.mem.prop, aes(y=Freq, x = Condition, fill=S_memory_correct)) +
+  geom_bar(stat="identity") +
+  scale_color_brewer(palette="Greys", name="Memory question correct\n", labels=c("No", "Yes")) +
+  scale_fill_brewer(palette="Greys", name="Memory question correct\n", labels=c("No", "Yes")) +
+  ylab("Proportion of participants") +
+  theme_bw()
+
+```

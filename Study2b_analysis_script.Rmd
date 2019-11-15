@@ -1,0 +1,521 @@
+---
+title: Stickers results for adults - Study 2b
+output:
+html_notebook:
+code_folding: hide
+highlight: tango
+theme: flatly
+toc: yes
+toc_depth: 5
+toc_float: yes
+html_document:
+toc: yes
+toc_depth: '5'
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+---
+
+## Packages
+
+Installed the necessary packages
+
+```{r, warning=FALSE, results='hide'}
+packages <- c("tidyverse", "lme4", "psych", "Rmisc", "lsmeans", "ordinal", "car", "effsize")
+packages_new <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(packages_new)) install.packages(packages_new)
+lapply(packages,library,character.only=T)
+
+```
+
+## Data import
+
+```{r}
+
+# find files in directory
+dir_files <- list.files(getwd())
+
+# import data
+# this trimmed file only removed irrelevant columns and kept the 2nd of the 3 headers provided by Qualtrics. Nothing else was altered.
+file <- dir_files[grep("Study2b_data.csv$", dir_files)]
+dat_orig <- read.csv(file, na.strings = c("","-99"))
+
+# re-label the headers
+names(dat_orig) <- c("Duration.Secs", "Completion.Time", "SubjID", "Consent","Comp_Check1_1","Comp_Check1_2", "Comp_Check2_1", "Comp_Check2_2", "Comp_T1_hide", "Comp_T1_response", "Comp_T1_RT", "Comp_T2_hide", "Comp_T2_response", "Comp_T2_RT","Comp_T3_hide", "Comp_T3_response", "Comp_T3_RT","Comp_T4_hide", "Comp_T4_response", "Comp_T4_RT","Coop_Check1_1","Coop_Check1_2", "Coop_Check2_1", "Coop_Check2_2", "Coop_T1_hide", "Coop_T1_response", "Coop_T1_RT", "Coop_T2_hide", "Coop_T2_response", "Coop_T2_RT","Coop_T3_hide", "Coop_T3_response", "Coop_T3_RT","Coop_T4_hide", "Coop_T4_response", "Coop_T4_RT","Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_2_1", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1","Pref_person_2","Pref_game_2", "Strategy_1_2", "Strategy_2_2", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2", "Age", "Gender","stickers_comp_you_total", "stickers_comp_them_total","stickers_coop_you_total", "stickers_coop_them_total", "first_condition", "first_preference")
+
+# create 2 new columns: proportion wins
+dat_orig$prop_comp <- dat_orig$stickers_comp_you_total / 4
+dat_orig$prop_coop <- dat_orig$stickers_coop_you_total / 4
+```
+
+## Organize data
+
+```{r}
+
+df <- dat_orig
+
+## merge post-task columns 
+
+merge_names_1 <- c("Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_2_1", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1")
+merge_names_2 <- c("Pref_game_2","Pref_person_2","Strategy_1_2", "Strategy_2_2", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2")
+merge_names <- c("Pref_game","Pref_person", "Strategy_1", "Strategy_2", "Strategy_both", "Feeling_task1", "Feeling_task2")
+
+for (merge_n in 1:length(merge_names_1)) {
+  
+  # set the column names we're interested in
+  m_col <- merge_names[merge_n]
+  m_col1 <- merge_names_1[merge_n]
+  m_col2 <- merge_names_2[merge_n]
+  
+  # replace NAs with empty string
+  df[, m_col1] <- as.character(df[, m_col1])
+  df[, m_col1][is.na(df[, m_col1])] <- ""
+  df[, m_col2] <- as.character(df[, m_col2])
+  df[, m_col2][is.na(df[, m_col2])] <- ""
+  
+  # combine column 1 and column 2
+  df <- unite_(df, m_col, c(m_col1,m_col2), "")
+  df[, m_col] <- as.factor(df[, m_col])
+}
+
+# remove first and second set of columns
+df = df[,!(names(df) %in% c(merge_names_1, merge_names_2))]
+
+## Exclusion: comprehension checks
+
+# figure out which participants got the first check question for Game 1 & 2 wrong both times
+# initialize variables
+df$Comp_Check1.correct <- numeric(dim(df)[1])
+df$Coop_Check1.correct <- numeric(dim(df)[1])
+df$Comp_Check2.correct <- numeric(dim(df)[1])
+df$Coop_Check2.correct <- numeric(dim(df)[1])
+# if the other player guesses correctly and finds the sticker(s), who gets to keep it/them?
+# comp: the other player
+# coop: neither of us get to keep any stickers
+df$Comp_Check1.correct[which(df$Comp_Check1_1 == 'the other player' | df$Comp_Check1_2 == 'the other player')] <- 1
+df$Coop_Check1.correct[which(df$Coop_Check1_1 == 'neither of us gets to keep any stickers' | df$Coop_Check1_2 == 'neither of us gets to keep any stickers')] <- 1
+
+# figure out which participants got the second check question for Game 1 & 2 wrong both times
+# if the other player guesses incorrectly and doesn't find the sticker(s), who gets to keep it/them?
+# comp: me
+# coop: we each get to keep a sticker
+df$Comp_Check2.correct <- numeric(dim(df)[1])
+df$Comp_Check2.correct[which(df$Comp_Check2_1 == 'me' | df$Comp_Check2_2 == 'me')] <- 1
+df$Coop_Check2.correct[which(df$Coop_Check2_1 == 'we each get to keep a sticker' | df$Coop_Check2_2 == 'we each get to keep a sticker')] <- 1
+
+# create an exclude variable
+df$Exclude <- 1 - (df$Comp_Check1.correct & df$Comp_Check2.correct)
+
+# exclude participants who did not fully complete the 2 games
+subjs_incomplete <- which(is.na(df$Comp_T1_hide) | is.na(df$Comp_T1_response) | is.na(df$Comp_T2_hide) | is.na(df$Comp_T2_response) | is.na(df$Comp_T3_hide) | is.na(df$Comp_T3_response) | is.na(df$Comp_T4_hide) | is.na(df$Comp_T4_response) | is.na(df$Coop_T1_hide) | is.na(df$Coop_T1_response) | is.na(df$Coop_T2_hide) | is.na(df$Coop_T2_response) | is.na(df$Coop_T3_hide) | is.na(df$Coop_T3_response) | is.na(df$Coop_T4_hide) | is.na(df$Coop_T4_response))
+df$Exclude[subjs_incomplete] <- 1
+
+# subset data by exclusion criteria
+df_excl <- subset(df, Exclude == 0) %>% dplyr::select(-contains("Check"))
+
+# turn to long format
+col_hide <- which(grepl("*hide*", colnames(df_excl)))
+df_long <- df_excl %>% 
+  gather(key = 'question.hide', value = 'response', col_hide) %>% 
+  separate(question.hide, c("condition","trial", "question"), sep = "_") %>%
+  spread(question, response)
+
+col_response <- which(grepl("*response*", colnames(df_excl)))
+response <- df_excl %>% 
+  gather(key = 'question.response', value = 'response', col_response) %>% 
+  separate(question.response, c("condition","trial", "question"), sep = "_") %>%
+  spread(question, response) %>%
+  dplyr::select(response)
+df_long <- cbind(df_long, response) 
+
+col_RT <- which(grepl("*RT*", colnames(df_excl)))
+RT <- df_excl %>%
+  gather(key = 'timing.RT', value = 'RT', col_RT) %>% 
+  separate(timing.RT, c("condition","trial", "question"), sep = "_") %>%
+  spread(question, RT) %>%
+  dplyr::select(RT)
+df_long <- cbind(df_long, RT) %>%
+  dplyr::select(-contains("_T1_"), -contains("_T2_"), -contains("_T3_"), -contains("_T4_"))
+
+# create a new column: success
+# 1 = successful; 0 = not successful
+# successful if Response.to.question !=  Where.would.you.like.to.hide.the.sticker.
+df_long$correct <- numeric(dim(df_long)[1])
+df_long$correct[which(df_long$response != df_long$hide)] <- 1
+
+# re-label responses to preference questions
+df_long$Pref_game_cond <- NA
+df_long$Pref_game_cond[which((df_long$Pref_game == "Game 1" & df_long$first_condition == "competition") | (df_long$Pref_game == "Game 2" & df_long$first_condition == "cooperation"))] <- "competition"
+df_long$Pref_game_cond[which((df_long$Pref_game == "Game 1" & df_long$first_condition == "cooperation") | (df_long$Pref_game == "Game 2" & df_long$first_condition == "competition"))] <- "cooperation"
+df_long$Pref_person_cond <- NA
+df_long$Pref_person_cond[which((df_long$Pref_person == "Person from Game 1" & df_long$first_condition == "competition") | (df_long$Pref_person == "Person from Game 2" & df_long$first_condition == "cooperation"))] <- "Person from the competition game"
+df_long$Pref_person_cond[which((df_long$Pref_person == "Person from Game 1" & df_long$first_condition == "cooperation") | (df_long$Pref_person == "Person from Game 2" & df_long$first_condition == "competition"))] <- "Person from the cooperation game"
+
+# re-label responses to feeling questions
+df_long$Feeling_comp <- factor("", c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+df_long$Feeling_coop <- factor("", c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+indx_comp_1st_comp <- which(df_long$first_condition == 'competition' & df_long$condition == 'Comp')
+indx_comp_1st_coop <- which(df_long$first_condition == 'competition' & df_long$condition == 'Coop')
+indx_coop_1st_comp <- which(df_long$first_condition == 'cooperation' & df_long$condition == 'Comp')
+indx_coop_1st_coop <- which(df_long$first_condition == 'cooperation' & df_long$condition == 'Coop')
+df_long$Feeling_comp[indx_comp_1st_comp] <- df_long$Feeling_task1[indx_comp_1st_comp]
+df_long$Feeling_comp[indx_coop_1st_comp] <- df_long$Feeling_task2[indx_coop_1st_comp]
+df_long$Feeling_coop[indx_comp_1st_coop] <- df_long$Feeling_task2[indx_comp_1st_coop]
+df_long$Feeling_coop[indx_coop_1st_coop] <- df_long$Feeling_task1[indx_coop_1st_coop]
+df_long <- df_long %>% 
+  gather("Feeling_cond", "Feeling", c("Feeling_comp", "Feeling_coop")) %>%
+  dplyr::filter(!is.na(Feeling)) %>%
+  dplyr::select(-c("Feeling_cond"))
+
+# create order variable
+df_long$condition_order[which(df_long$first_condition == "competition" & df_long$condition == "Comp")] <- "first"
+df_long$condition_order[which(df_long$first_condition == "competition" & df_long$condition == "Coop")] <- "second"
+df_long$condition_order[which(df_long$first_condition == "cooperation" & df_long$condition == "Coop")] <- "first"
+df_long$condition_order[which(df_long$first_condition == "cooperation" & df_long$condition == "Comp")] <- "second"
+
+# convert to proper class
+df_long$trial <- ordered(as.factor(df_long$trial))
+df_long$condition <- as.factor(df_long$condition)
+df_long$hide <- as.factor(df_long$hide)
+df_long$response <- as.factor(df_long$response)
+df_long$condition_order <- as.factor(df_long$condition_order)
+df_long$Feeling_task1 <- ordered(df_long$Feeling_task1, levels = c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+df_long$Feeling_task2 <- ordered(df_long$Feeling_task2, levels = c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+df_long$Feeling <- ordered(df_long$Feeling, levels = c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+df_long$Feeling_score <- as.integer(df_long$Feeling)
+df_long$Pref_game_cond <- as.factor(df_long$Pref_game_cond)
+df_long$Pref_person_cond <- as.factor(df_long$Pref_person_cond)
+df_long <- droplevels(df_long)
+
+```
+
+## Descriptive stats
+
+Number of people excluded
+
+```{r}
+
+print("number of exclusions")
+dim(dat_orig)[1] - dim(df_excl)[1]
+
+print("Demographics for people who completed the survey")
+mean(dat_orig$Age, na.rm=TRUE)
+sd(dat_orig$Age, na.rm=TRUE)
+summary(dat_orig[,c("Age", "Gender")])
+
+```
+
+Number of people left after exclusion criteria
+
+```{r}
+
+dim(df_excl)[1]
+
+print("Demographics for people who passed comp checks")
+mean(df_excl$Age, na.rm=TRUE)
+sd(df_excl$Age, na.rm=TRUE)
+summary(df_excl[,c("Age", "Gender")])
+
+```
+
+### Effect size calculation
+
+Proportion of stickers won for cooperation vs. competition
+
+```{r}
+
+v_props <- c(df_excl$prop_comp, df_excl$prop_coop)
+v_groups <- as.factor(cbind(rep("competition", length(df_excl$prop_comp)),rep("cooperation", length(df_excl$prop_coop))))
+df_eff <- data.frame(v_props, v_groups)
+effsize::cohen.d(df_eff$v_props, relevel(df_eff$v_groups, ref="cooperation"))
+
+```
+
+
+## Excluded people who failed comp checks
+
+### Figures
+
+#### Proportions
+
+```{r, fig.height = 1, fig.width = 2}
+
+dat_summ <- summarySE(df_long, measurevar="correct", groupvars = c("condition"))
+ggplot(dat_summ, aes(y=correct, x=condition, fill=condition)) +
+  geom_bar(stat="identity", position=position_dodge(), width = 0.5) +
+  geom_errorbar(aes(ymin=correct-ci, ymax=correct+ci, width=.2)) +
+  coord_cartesian(y=c(0,1)) +
+  ylab("Proportion of trials won") +
+  xlab("Condition") +
+  ggtitle("Study 2b") +
+  scale_x_discrete(labels=c("Coop" = "Cooperation", "Comp" = "Competition")) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  theme_bw()
+```
+
+#### Proportions by order of task presentation
+
+```{r, fig.width=3, fig.height=2}
+ggplot(df_long, aes(y = correct, x = condition, color = condition)) +
+  stat_summary(fun.data = "mean_cl_boot") +
+  facet_wrap(~condition_order, ncol=2) +
+  scale_color_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
+  scale_x_discrete(labels=c("Coop" = "cooperation", "Comp" = "competition")) +
+  coord_cartesian(y=c(0,1)) +
+  theme_bw()
+```
+
+
+#### Preferences
+
+```{r, fig.width = 3, fig.height=1.5}
+
+df_pref <- df_long %>% gather("Pref_question", "Pref_response", c("Pref_game_cond", "Pref_person_cond"))
+df_pref <- as.data.frame(table(df_pref[,c("Pref_response", "Pref_question")]) / 8)
+names(df_pref) <- c("Response", "Question","Freq")
+df_pref$Prop <- df_pref$Freq / (sum(df_pref$Freq) / 2)
+df_pref <- df_pref %>% dplyr::filter(Prop > 0)
+
+ggplot(df_pref, aes(y=Prop, x = Question, fill=Response)) +
+  geom_bar(stat="identity", width=0.8) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60", "#84a59d", "#f6bd60")) +
+  geom_text(aes(label=Response), position=position_stack(vjust = .5), color="white", size=2.5) +
+  ylab("Proportion of participants") +
+  xlab(NULL) +
+  scale_x_discrete(labels=c("Pref_game_cond" = "Which game would you\nrather play again?", "Pref_person_cond" = "Which person would you\nrather play a different game with?")) +
+  theme_bw() +
+  theme(
+    legend.position = "none")
+
+```
+
+#### Feelings
+
+```{r, fig.width=2.5, fig.height=2}
+tb_feeling <- table(df_long$Feeling, df_long$condition) / 4
+df_feeling <- as.data.frame(tb_feeling)
+names(df_feeling) <- c("rating", "condition", "freq")
+df_feeling$rating <- ordered(df_feeling$rating, levels = c("Extremely good", "Moderately good", "Slightly good", "Neither good nor bad", "Slightly bad", "Moderately bad", "Extremely bad"))
+
+ggplot(df_feeling, aes(y=freq, x=rating, fill=condition)) +
+  geom_bar(stat="identity") +
+  facet_wrap(~condition, ncol=1, labeller=as_labeller(c(Coop = "Cooperation", Comp = "Competition"))) +
+  scale_fill_manual(values=c("#84a59d", "#f6bd60")) +
+  ylab("Frequency") +
+  xlab("How did you feel about clicking on the empty cup\nwhen responding to the other player's question?") +
+  theme_bw() +
+  theme(legend.position = "none",
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        axis.text.x = element_text(angle = 30, hjust=1))
+```
+
+### Analyses
+
+#### Binary: correct/incorrect
+
+```{r}
+
+model1 = glmer(as.factor(correct) ~ condition*Age + Gender + condition_order +
+                 (1 | SubjID) + (1|trial),
+               data = df_long,
+               family = binomial,
+               control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+drop1(model1, test="Chisq")
+
+model1.1 <- update(model1, . ~ . -condition:Age)
+drop1(model1.1, test="Chisq")
+
+lsmeans(model1.1, list(pairwise ~ condition_order), adjust = "mvt")
+
+```
+
+##### Comparing to null model
+
+```{r}
+
+model1.null = glmer(as.factor(correct) ~ Age + Gender + condition_order +
+                 (1 | SubjID) + (1|trial),
+               data = df_long,
+               family = binomial,
+               control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+anova(model1, model1.null, test="Chisq")
+```
+
+#### Binary: correct/incorrect with trial as predictor
+
+```{r}
+
+model1 = glmer(as.factor(correct) ~ condition*trial + (1|SubjID),
+               data = df_long,
+               family = binomial,
+               control = glmerControl(optimizer = 'bobyqa', optCtrl = list(maxfun=100000)))
+
+drop1(model1, test="Chisq")
+
+drop1(update(model1, . ~ . -condition:trial), test="Chisq")
+
+```
+
+#### T1: correct/incorrect
+
+```{r}
+
+df.t1 <- subset(df_long, trial == "T1")
+
+model1 = glm(as.factor(correct) ~ condition*Age + Gender + condition_order,
+               data = df.t1,
+               family = binomial)
+
+drop1(model1, test="Chisq")
+
+model1.1 <- update(model1, . ~ . -condition:Age)
+drop1(model1.1, test="Chisq")
+
+```
+#### T2: correct/incorrect
+
+```{r}
+
+df.t2 <- subset(df_long, trial == "T2")
+
+model1 = glm(as.factor(correct) ~ condition*Age + Gender + condition_order,
+               data = df.t2,
+               family = binomial)
+
+drop1(model1, test="Chisq")
+
+model1.1 <- update(model1, . ~ . -condition:Age)
+drop1(model1.1, test="Chisq")
+
+```
+
+#### T3: correct/incorrect
+
+```{r}
+
+df.t3 <- subset(df_long, trial == "T3")
+
+model1 = glm(as.factor(correct) ~ condition*Age + Gender + condition_order,
+               data = df.t3,
+               family = binomial)
+
+drop1(model1, test="Chisq")
+
+model1.1 <- update(model1, . ~ . -condition:Age)
+drop1(model1.1, test="Chisq")
+
+```
+
+#### T4: correct/incorrect
+
+```{r}
+
+df.t4 <- subset(df_long, trial == "T4")
+
+model1 = glm(as.factor(correct) ~ condition*Age + Gender + condition_order,
+               data = df.t4,
+               family = binomial)
+
+drop1(model1, test="Chisq")
+
+model1.1 <- update(model1, . ~ . -condition:Age)
+drop1(model1.1, test="Chisq")
+```
+
+#### Number of switches per person
+
+```{r}
+
+df_switch <- df_excl %>% unite("Comp_Responses", "Comp_T1_response", "Comp_T2_response", "Comp_T3_response", "Comp_T4_response", sep=",") %>% dplyr::select("SubjID", "Comp_Responses", "first_condition", contains("_response"))
+df_switch <- df_switch %>% unite("Coop_Responses", "Coop_T1_response", "Coop_T2_response", "Coop_T3_response", "Coop_T4_response", sep=",")
+
+# find number of switches
+
+list_switches_comp <- lapply(df_switch$Comp_Responses, function(x) unlist(strsplit(x, split=","))) 
+list_switches_coop <- lapply(df_switch$Coop_Responses, function(x) unlist(strsplit(x, split=",")))
+
+switches_comp <- lapply(list_switches_comp, function(x) rle(x))
+switches_coop <- lapply(list_switches_coop, function(x) rle(x))
+
+df_switch$num_switches_comp <- unlist(lapply(switches_comp, function(x) length(x[1]$lengths) - 1))
+df_switch$num_switches_coop <- unlist(lapply(switches_coop, function(x) length(x[1]$lengths) - 1))
+
+df_switch <- df_switch %>% gather("condition", "num_switches", c("num_switches_comp", "num_switches_coop"))
+df_switch <- df_switch %>% separate(condition, c("num","switches","condition")) %>% dplyr::select(-c("num", "switches"))
+
+df_switch$condition_order <- NA
+df_switch$condition_order[which(df_switch$first_condition == "competition" & df_switch$condition == "comp")] <- "first"
+df_switch$condition_order[which(df_switch$first_condition == "cooperation" & df_switch$condition == "coop")] <- "first"
+df_switch$condition_order[which(df_switch$first_condition == "competition" & df_switch$condition == "coop")] <- "second"
+df_switch$condition_order[which(df_switch$first_condition == "cooperation" & df_switch$condition == "comp")] <- "second"
+
+print("----- total -----")
+t.test(df_switch$num_switches[which(df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition == "coop")])
+print("----- first presented variant -----")
+t.test(df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "coop")])
+print("----- second presented variant -----")
+t.test(df_switch$num_switches[which(df_switch$condition_order == "second" & df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition_order == "second" & df_switch$condition == "coop")])
+
+```
+
+#### RT
+
+```{r}
+
+model2 = lmer(RT ~ condition*Age + Gender + condition_order +
+                (1 | SubjID) + (1|trial),
+              data = df_long)
+
+drop1(model2, test="Chisq")
+
+
+model2.1 <- update(model2, . ~ . -condition:Age)
+drop1(model2.1, test="Chisq")
+
+
+```
+
+#### Preference: Game
+
+```{r}
+
+tb_game <- table(df_long[,c("Pref_game_cond")]) / 8
+tb_game
+
+chisq.test(tb_game)
+
+```
+
+#### Preference: Person
+
+```{r}
+
+tb_person <- table(df_long[,c("Pref_person_cond")]) / 8
+tb_person
+chisq.test(tb_person)
+
+```
+
+#### Feelings
+
+```{r, width=10, height=1}
+
+df_feeling <- df_long %>% group_by(SubjID, condition) %>% dplyr::summarise(Feeling_score = mean(Feeling_score))
+wilcox.test(Feeling_score ~ condition, data = df_feeling, paired=TRUE)
+
+```
+
+#### Model with other factors
+
+```{r}
+
+model1 = glm(as.factor(correct) ~ condition + Age + Gender + condition_order + Feeling + Pref_game_cond + Pref_person_cond + RT + trial,
+               data = df_long,
+               family = binomial)
+
+drop1(model1, test="Chisq")
+
+```
