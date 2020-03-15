@@ -148,7 +148,17 @@ with(subset(dat_rem_long, trial=="Trial.1"), table(condition, stickers_num))
 
 ```{r}
 
-tb_decep <- with(subset(dat_rem_long, trial=="Trial.1"), table(coded_response))
+print("No")
+
+tb_decep <- with(subset(dat_rem_long, trial=="Trial.1" & coded_response == "N"), table(condition))
+
+tb_decep
+
+chisq.test(tb_decep)
+
+print("Yes")
+
+tb_decep <- with(subset(dat_rem_long, trial=="Trial.1" & coded_response == "Y"), table(condition))
 
 tb_decep
 
@@ -234,6 +244,8 @@ ggplot(dat_summ, aes(y=correct, x=condition, fill=condition)) +
   scale_x_discrete(labels=c("Coop" = "Cooperation", "Comp" = "Competition")) +
   scale_fill_manual(values=c("#84a59d", "#f6bd60"), name="Condition\n", labels=c("Competition", "Cooperation")) +
   theme_bw()
+
+print(dat_summ)
 ```
 
 
@@ -296,6 +308,10 @@ model.b.t.1 <- glmer(as.factor(correct) ~ condition*trial +
 drop1(model.b.t.1, test="Chisq")
 
 drop1(update(model.b.t.1, . ~ . -condition:trial), test="Chisq")
+
+dat_trial_summ <- summarySE(dat_rem_long, measurevar="correct", groupvars = c("trial"))
+
+print(dat_trial_summ)
 
 ```
 
@@ -367,6 +383,8 @@ drop1(m.stick.t.4.1, test="Chisq")
 
 #### Number of switches per person
 
+##### by pointed cup
+
 ```{r, fig.width =2}
 
 df_switch <- dat_removed %>% unite("Responses", "Trial.1_Response", "Trial.2_Response", "Trial.3_Response", "Trial.4_Response", sep=",") %>% dplyr::select("SubjID", "Responses", "condition", contains("Responses"))
@@ -380,6 +398,42 @@ switches <- lapply(list_switches, function(x) rle(x))
 df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
 
 t.test(df_switch$num_switches[which(df_switch$condition == "competition")], df_switch$num_switches[which(df_switch$condition == "cooperation")])
+
+```
+
+##### by incorrect/correct cup
+
+```{r}
+
+df_switch <- dat_removed %>% unite("Responses", "Trial.1_Response", "Trial.2_Response", "Trial.3_Response", "Trial.4_Response", sep=",") %>% dplyr::select("SubjID", "Responses", "condition", contains("Responses"))
+df_switch_hide <- dat_removed %>% unite("Hides", "Trial.1_Hide", "Trial.2_Hide", "Trial.3_Hide", "Trial.4_Hide", sep=",") %>% dplyr::select("SubjID", "Hides", "condition", contains("Hides"))
+df_switch <- left_join(df_switch, df_switch_hide, by=c("SubjID","condition"))
+
+count_switches <- function(v_hide, v_response) {
+  var_return <- ""
+  for (t in seq(1,8,2)) {
+    if (((substring(v_hide,t,t) == '1') & (substring(v_response,t,t) == '1')) | ((substring(v_hide,t,t) == '2') & (substring(v_response,t,t) == '2'))) {
+      var_return <- paste(var_return, "I", sep=",")
+    } else {
+      var_return <- paste(var_return, "C", sep=",")
+    }
+  }
+  return(substring(var_return, 2))
+}
+
+df_switch$Switches_Correct <- mapply(count_switches, v_hide=df_switch$Hides, v_response=df_switch$Responses)
+
+# find number of switches
+
+list_switches <- lapply(df_switch$Switches_Correct, function(x) unlist(strsplit(x, split=","))) 
+
+switches <- lapply(list_switches, function(x) rle(x))
+
+df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
+
+t.test(df_switch$num_switches[which(df_switch$condition == "competition")], df_switch$num_switches[which(df_switch$condition == "cooperation")])
+
+summarySE(df_switch, measurevar = "num_switches", groupvars = "condition")
 
 ```
 

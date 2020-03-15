@@ -39,7 +39,7 @@ file <- dir_files[grep("Study2b_data.csv$", dir_files)]
 dat_orig <- read.csv(file, na.strings = c("","-99"))
 
 # re-label the headers
-names(dat_orig) <- c("Duration.Secs", "Completion.Time", "SubjID", "Consent","Comp_Check1_1","Comp_Check1_2", "Comp_Check2_1", "Comp_Check2_2", "Comp_T1_hide", "Comp_T1_response", "Comp_T1_RT", "Comp_T2_hide", "Comp_T2_response", "Comp_T2_RT","Comp_T3_hide", "Comp_T3_response", "Comp_T3_RT","Comp_T4_hide", "Comp_T4_response", "Comp_T4_RT","Coop_Check1_1","Coop_Check1_2", "Coop_Check2_1", "Coop_Check2_2", "Coop_T1_hide", "Coop_T1_response", "Coop_T1_RT", "Coop_T2_hide", "Coop_T2_response", "Coop_T2_RT","Coop_T3_hide", "Coop_T3_response", "Coop_T3_RT","Coop_T4_hide", "Coop_T4_response", "Coop_T4_RT","Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_2_1", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1","Pref_person_2","Pref_game_2", "Strategy_1_2", "Strategy_2_2", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2", "Age", "Gender","stickers_comp_you_total", "stickers_comp_them_total","stickers_coop_you_total", "stickers_coop_them_total", "first_condition", "first_preference")
+names(dat_orig) <- c("Duration.Secs", "Completion.Time", "SubjID", "Consent","Comp_Check1_1","Comp_Check1_2", "Comp_Check2_1", "Comp_Check2_2", "Comp_T1_hide", "Comp_T1_response", "Comp_T1_RT", "Comp_T2_hide", "Comp_T2_response", "Comp_T2_RT","Comp_T3_hide", "Comp_T3_response", "Comp_T3_RT","Comp_T4_hide", "Comp_T4_response", "Comp_T4_RT","Coop_Check1_1","Coop_Check1_2", "Coop_Check2_1", "Coop_Check2_2", "Coop_T1_hide", "Coop_T1_response", "Coop_T1_RT", "Coop_T2_hide", "Coop_T2_response", "Coop_T2_RT","Coop_T3_hide", "Coop_T3_response", "Coop_T3_RT","Coop_T4_hide", "Coop_T4_response", "Coop_T4_RT","Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_1_1_coded", "Strategy_2_1", "Strategy_2_1_coded", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1","Pref_person_2","Pref_game_2", "Strategy_1_2", "Strategy_1_2_coded", "Strategy_2_2", "Strategy_2_2_coded", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2", "Age", "Gender","stickers_comp_you_total", "stickers_comp_them_total","stickers_coop_you_total", "stickers_coop_them_total", "first_condition", "first_preference")
 
 # create 2 new columns: proportion wins
 dat_orig$prop_comp <- dat_orig$stickers_comp_you_total / 4
@@ -54,9 +54,9 @@ df <- dat_orig
 
 ## merge post-task columns 
 
-merge_names_1 <- c("Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_2_1", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1")
-merge_names_2 <- c("Pref_game_2","Pref_person_2","Strategy_1_2", "Strategy_2_2", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2")
-merge_names <- c("Pref_game","Pref_person", "Strategy_1", "Strategy_2", "Strategy_both", "Feeling_task1", "Feeling_task2")
+merge_names_1 <- c("Pref_game_1","Pref_person_1", "Strategy_1_1", "Strategy_1_1_coded", "Strategy_2_1", "Strategy_2_1_coded", "Strategy_both_1", "Feeling_task1_1", "Feeling_task2_1")
+merge_names_2 <- c("Pref_game_2","Pref_person_2","Strategy_1_2", "Strategy_1_2_coded", "Strategy_2_2", "Strategy_2_2_coded", "Strategy_both_2", "Feeling_task1_2", "Feeling_task2_2")
+merge_names <- c("Pref_game","Pref_person", "Strategy_1", "Strategy_1_coded", "Strategy_2", "Strategy_2_coded", "Strategy_both", "Feeling_task1", "Feeling_task2")
 
 for (merge_n in 1:length(merge_names_1)) {
   
@@ -228,7 +228,102 @@ df_eff <- data.frame(v_props, v_groups)
 effsize::cohen.d(df_eff$v_props, relevel(df_eff$v_groups, ref="cooperation"))
 
 ```
+### Performance by condition
 
+```{r}
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "condition"))
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "condition")) %>%
+  summarySE(measurevar = "correct", groupvars = "condition")
+
+```
+
+### Performance by variant
+
+```{r}
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "condition_order"))
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "condition_order")) %>%
+  summarySE(measurevar = "correct", groupvars = "condition_order")
+
+```
+
+### Performance by trial
+
+```{r}
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "trial"))
+
+summarySE(df_long, measurevar = "correct", groupvars = c("SubjID", "trial")) %>%
+  summarySE(measurevar = "correct", groupvars = "trial")
+
+```
+
+### Explicit mentions of deception
+
+```{r}
+
+tb_decep_unorg <- with(subset(df_long, (trial == "T1") & (condition == "Comp")), table(Strategy_1_coded, Strategy_2_coded, first_condition))
+
+tb_decep_org <- matrix(c(tb_decep_unorg[1] + tb_decep_unorg[3] + tb_decep_unorg[5] + tb_decep_unorg[6],
+                       tb_decep_unorg[2] + tb_decep_unorg[4] + tb_decep_unorg[7] + tb_decep_unorg[8],
+                       tb_decep_unorg[1] + tb_decep_unorg[2] + tb_decep_unorg[5] + tb_decep_unorg[7],
+                       tb_decep_unorg[3] + tb_decep_unorg[4] + tb_decep_unorg[6] + tb_decep_unorg[8]),
+                       ncol=2)
+
+colnames(tb_decep_org) <- c("competition", "cooperation")
+rownames(tb_decep_org) <- c("N", "Y")
+
+tb_decep_org <- as.table(tb_decep_org)
+
+print(tb_decep_org)
+
+print(prop.table(tb_decep_org, 2))
+
+print("No")
+
+chisq.test(tb_decep_org[c(1,3)])
+
+print("Yes")
+
+chisq.test(tb_decep_org[c(2,4)])
+
+```
+
+### Response time by condition
+
+```{r}
+
+summarySE(df_long, measurevar = "RT", groupvars = c("SubjID", "condition"))
+
+summarySE(df_long, measurevar = "RT", groupvars = c("SubjID", "condition")) %>%
+  summarySE(measurevar = "RT", groupvars = "condition")
+
+```
+
+### Response time by variant
+
+```{r}
+
+summarySE(df_long, measurevar = "RT", groupvars = c("SubjID", "condition_order"))
+
+summarySE(df_long, measurevar = "RT", groupvars = c("SubjID", "condition_order")) %>%
+  summarySE(measurevar = "RT", groupvars = "condition_order")
+
+```
+
+### Feelings by condition
+
+```{r}
+
+summarySE(df_long, measurevar = "Feeling_score", groupvars = c("SubjID", "condition"))
+
+summarySE(df_long, measurevar = "Feeling_score", groupvars = c("SubjID", "condition")) %>%
+  summarySE(measurevar = "Feeling_score", groupvars = "condition")
+
+```
 
 ## Excluded people who failed comp checks
 
@@ -424,6 +519,8 @@ drop1(model1.1, test="Chisq")
 
 #### Number of switches per person
 
+##### Switches as calculated by physical cup
+
 ```{r}
 
 df_switch <- df_excl %>% unite("Comp_Responses", "Comp_T1_response", "Comp_T2_response", "Comp_T3_response", "Comp_T4_response", sep=",") %>% dplyr::select("SubjID", "Comp_Responses", "first_condition", contains("_response"))
@@ -452,6 +549,66 @@ df_switch$condition_order[which(df_switch$first_condition == "cooperation" & df_
 print("----- total -----")
 t.test(df_switch$num_switches[which(df_switch$condition == "comp")],
        df_switch$num_switches[which(df_switch$condition == "coop")])
+print("----- first presented variant -----")
+t.test(df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "coop")])
+print("----- second presented variant -----")
+t.test(df_switch$num_switches[which(df_switch$condition_order == "second" & df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition_order == "second" & df_switch$condition == "coop")])
+
+```
+
+##### Switches as calculated by "correct"/"incorrect" cup
+
+```{r}
+
+df_switch <- df_excl %>% unite("Comp_Responses", "Comp_T1_response", "Comp_T2_response", "Comp_T3_response", "Comp_T4_response", sep=",") %>% dplyr::select("SubjID", "Comp_Responses", "first_condition", contains("_response"))
+df_switch <- df_switch %>% unite("Coop_Responses", "Coop_T1_response", "Coop_T2_response", "Coop_T3_response", "Coop_T4_response", sep=",")
+df_switch_hide <- df_excl %>% unite("Comp_Hides", "Comp_T1_hide", "Comp_T2_hide", "Comp_T3_hide", "Comp_T4_hide", sep=",") %>% dplyr::select("SubjID", "Comp_Hides", "first_condition", contains("_hide"))
+df_switch_hide <- df_switch_hide %>% unite("Coop_Hides", "Coop_T1_hide", "Coop_T2_hide", "Coop_T3_hide", "Coop_T4_hide", sep=",")
+df_switch <- left_join(df_switch, df_switch_hide, by=c("SubjID","first_condition"))
+
+count_switches <- function(v_hide, v_response) {
+  var_return <- ""
+  for (t in seq(1,8,2)) {
+    if (((substring(v_hide,t,t) == '1') & (substring(v_response,t,t) == '1')) | ((substring(v_hide,t,t) == '2') & (substring(v_response,t,t) == '2'))) {
+      var_return <- paste(var_return, "I", sep=",")
+    } else {
+      var_return <- paste(var_return, "C", sep=",")
+    }
+  }
+  return(substring(var_return, 2))
+}
+
+df_switch$Comp_Switches_Correct <- mapply(count_switches, v_hide=df_switch$Comp_Hides, v_response=df_switch$Comp_Responses)
+df_switch$Coop_Switches_Correct <- mapply(count_switches, v_hide=df_switch$Coop_Hides, v_response=df_switch$Coop_Responses)
+
+# find number of switches
+
+list_switches_comp <- lapply(df_switch$Comp_Switches_Correct, function(x) unlist(strsplit(x, split=","))) 
+list_switches_coop <- lapply(df_switch$Coop_Switches_Correct, function(x) unlist(strsplit(x, split=",")))
+
+switches_comp <- lapply(list_switches_comp, function(x) rle(x))
+switches_coop <- lapply(list_switches_coop, function(x) rle(x))
+
+df_switch$num_switches_comp <- unlist(lapply(switches_comp, function(x) length(x[1]$lengths) - 1))
+df_switch$num_switches_coop <- unlist(lapply(switches_coop, function(x) length(x[1]$lengths) - 1))
+
+df_switch <- df_switch %>% gather("condition", "num_switches", c("num_switches_comp", "num_switches_coop"))
+df_switch <- df_switch %>% separate(condition, c("num","switches","condition")) %>% dplyr::select(-c("num", "switches"))
+
+df_switch$condition_order <- NA
+df_switch$condition_order[which(df_switch$first_condition == "competition" & df_switch$condition == "comp")] <- "first"
+df_switch$condition_order[which(df_switch$first_condition == "cooperation" & df_switch$condition == "coop")] <- "first"
+df_switch$condition_order[which(df_switch$first_condition == "competition" & df_switch$condition == "coop")] <- "second"
+df_switch$condition_order[which(df_switch$first_condition == "cooperation" & df_switch$condition == "comp")] <- "second"
+
+print("----- total -----")
+t.test(df_switch$num_switches[which(df_switch$condition == "comp")],
+       df_switch$num_switches[which(df_switch$condition == "coop")])
+
+summarySE(df_switch, measurevar = "num_switches", groupvars = "condition")
+
 print("----- first presented variant -----")
 t.test(df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "comp")],
        df_switch$num_switches[which(df_switch$condition_order == "first" & df_switch$condition == "coop")])

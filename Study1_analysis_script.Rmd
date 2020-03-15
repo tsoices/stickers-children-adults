@@ -237,6 +237,8 @@ lsmeans(m.stick.t4.1, list(pairwise ~ Condition), adjust = "mvt")
 
 #### Number of switches
 
+##### by cup pointed
+
 ```{r}
 df_switch <- df_S %>% unite("Locations", "Stickers_T1_location", "Stickers_T2_location", "Stickers_T3_location", "Stickers_T4_location", sep=",") 
 df_switch <- df_switch %>% unite("Wins", "Stickers_T1_win", "Stickers_T2_win", "Stickers_T3_win", "Stickers_T4_win", sep=",")
@@ -266,8 +268,26 @@ switches <- lapply(list_responses, function(x) rle(x))
 df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
 
 t.test(df_switch$num_switches[which(df_switch$Condition == "Competition")], df_switch$num_switches[which(df_switch$Condition == "Cooperation")])
+
 ```
 
+##### by correct/incorrect cup
+
+```{r}
+
+# find number of switches
+
+list_switches <- lapply(df_switch$Wins, function(x) unlist(strsplit(gsub("NA","",x), split=",")))
+
+switches <- lapply(list_switches, function(x) rle(x))
+
+df_switch$num_switches <- unlist(lapply(switches, function(x) length(x[1]$lengths) - 1))
+
+t.test(df_switch$num_switches[which(df_switch$Condition == "Competition")], df_switch$num_switches[which(df_switch$Condition == "Cooperation")])
+
+summarySE(df_switch, measurevar = "num_switches", groupvars = "Condition")
+
+```
 
 #### Stickers by performance on other tasks (EF, memory)
 
@@ -347,6 +367,13 @@ ggplot(df_S, aes(x=Age_in_years, y = Stickers_prop, fill=Condition, color=Condit
 ```{r, fig.width = 5, fig.height = 2}
 
 df.long.rm <- df.long[!is.na(df.long$Sticker_win),]
+
+# get descriptive stats for just time
+df.summ.time <- with(df.long.rm, table(Sticker_win, Time))
+df.summ.time.prop <- as.data.frame(prop.table(df.summ.time, c(2)))
+print(subset(df.summ.time.prop, Sticker_win == "Y"))
+
+# for time and condition
 
 df.summ.time <- with(df.long.rm, table(Sticker_win, Condition, Time))
 df.summ.time.prop <- as.data.frame(prop.table(df.summ.time, c(2,3)))
